@@ -33,3 +33,5 @@ libffi.xcodeproj/xcuserdata
 libffi.xcodeproj/project.xcworkspace
 build_*/
 darwin_*/
+/x86
+/x86_64

@@ -559,6 +559,9 @@ AC_SUBST(TARGETDIR)
 
 AC_SUBST(SHELL)
 
+FFI_CFLAGS=""
+AC_SUBST(FFI_CFLAGS)
+
 AC_ARG_ENABLE(debug,
 [  --enable-debug          debugging mode],
   if test "$enable_debug" = "yes"; then
