@@ -599,11 +599,6 @@ if test "x$GCC" = "xyes"; then
     toolexecdir="${libdir}"/gcc-lib/'$(target_alias)'
     toolexeclibdir="${libdir}"
   fi
-  multi_os_directory=`$CC $CFLAGS -print-multi-os-directory`
-  case $multi_os_directory in
-    .) ;; # Avoid trailing /.
-    ../*) toolexeclibdir=$toolexeclibdir/$multi_os_directory ;;
-  esac
   AC_SUBST(toolexecdir)
 else
   toolexeclibdir="${libdir}"
