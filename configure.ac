@@ -337,6 +337,12 @@ AC_HEADER_STDC
 AC_CHECK_FUNCS(memcpy)
 AC_FUNC_ALLOCA
 
+case "$host" in
+  *qnx*)
+    AC_DEFINE(HAVE_QNX, 1, [Define if host is QNX])
+    ;;
+esac
+
 AC_CHECK_SIZEOF(double)
 AC_CHECK_SIZEOF(long double)
 
