@@ -33,6 +33,10 @@
 
 #include <stdlib.h>
 
+#ifdef HAVE_QNX
+#include <sys/mman.h>
+#endif
+
 /* Forward declares. */
 static int vfp_type_p (ffi_type *);
 static void layout_vfp_args (ffi_cif *);
@@ -751,6 +755,21 @@ ffi_closure_free (void *ptr)
 
 #else
 
+#ifdef HAVE_QNX
+#define FFI_INIT_TRAMPOLINE(TRAMP,FUN,CTX)				\
+({ unsigned char *__tramp = (unsigned char*)(TRAMP);			\
+   unsigned int  __fun = (unsigned int)(FUN);				\
+   unsigned int  __ctx = (unsigned int)(CTX);				\
+   unsigned char *insns = (unsigned char *)(CTX);                       \
+   memcpy (__tramp, ffi_arm_trampoline, sizeof ffi_arm_trampoline);     \
+   *(unsigned int*) &__tramp[12] = __ctx;				\
+   *(unsigned int*) &__tramp[16] = __fun;				\
+   msync((&__tramp[0]), 19, MS_SYNC | MS_INVALIDATE_ICACHE); /* Clear data mapping.  */ \
+   msync(insns, 3 * sizeof (unsigned int), MS_SYNC | MS_INVALIDATE_ICACHE);             \
+                                                 /* Clear instruction   \
+                                                    mapping.  */        \
+ })
+#else
 #define FFI_INIT_TRAMPOLINE(TRAMP,FUN,CTX)				\
 ({ unsigned char *__tramp = (unsigned char*)(TRAMP);			\
    unsigned int  __fun = (unsigned int)(FUN);				\
@@ -764,6 +783,7 @@ ffi_closure_free (void *ptr)
                                                  /* Clear instruction   \
                                                     mapping.  */        \
  })
+#endif
 
 #endif
 
