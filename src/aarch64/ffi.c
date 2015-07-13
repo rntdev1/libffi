@@ -1080,7 +1080,14 @@ ffi_closure_SYSV_inner (ffi_closure *closure, struct call_context *context,
 						     &state, FFI_TYPE_POINTER),
 		      sizeof (avalue[i]));
 	    }
-	  else if (available_x (&state) >= (ty->size + 7) / 8)
+	  else if ((ty->type == FFI_TYPE_FLOAT || ty->type == FFI_TYPE_DOUBLE)
+	      && state.nsrn < N_V_ARG_REG)
+	    {
+	      avalue[i] = get_v_addr (context, state.nsrn);
+	      state.nsrn++;
+	    }
+	  else if (!(ty->type == FFI_TYPE_FLOAT || ty->type == FFI_TYPE_DOUBLE) &&
+	      available_x (&state) >= (ty->size + 7) / 8)
 	    {
 	      avalue[i] = get_x_addr (context, state.ngrn);
 	      state.ngrn += (ty->size + 7) / 8;
