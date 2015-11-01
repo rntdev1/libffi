@@ -1,7 +1,0 @@
-all:
-	make -C ../../
-	$$CC -Wall -pipe -Os $$CFLAGS -I../../aarch64-apple-darwin/include -I../../aarch64-apple-darwin cls_double.c -o cls_double ../../aarch64-apple-darwin/.libs/libffi.a $$LDFLAGS
-	$$CC -Wall -pipe -Os $$CFLAGS -I../../aarch64-apple-darwin/include -I../../aarch64-apple-darwin cls_pointer_va.c -o cls_pointer_va ../../aarch64-apple-darwin/.libs/libffi.a $$LDFLAGS
-	$$CC -Wall -pipe -Os $$CFLAGS -I../../aarch64-apple-darwin/include -I../../aarch64-apple-darwin va_1.c -o va_1 ../../aarch64-apple-darwin/.libs/libffi.a $$LDFLAGS
-	$$CC -Wall -pipe -Os $$CFLAGS -I../../aarch64-apple-darwin/include -I../../aarch64-apple-darwin va_pointer.c -o va_pointer ../../aarch64-apple-darwin/.libs/libffi.a $$LDFLAGS
-	scp ./cls_double ./cls_pointer_va ./va_1 ./va_pointer iphone:/var/root
