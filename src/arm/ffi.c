@@ -348,6 +348,16 @@ extern void ffi_call_SYSV (void *stack, struct call_frame *,
 extern void ffi_call_VFP (void *vfp_space, struct call_frame *,
 			   void (*fn) (void), unsigned vfp_used) FFI_HIDDEN;
 
+#ifndef __SANITIZE_ADDRESS__
+# ifdef __clang__
+#  if __has_feature(address_sanitizer)
+#   define __SANITIZE_ADDRESS__
+#  endif
+# endif
+#endif
+#ifdef __SANITIZE_ADDRESS__
+__attribute__((noinline,no_sanitize_address))
+#endif
 static void
 ffi_call_int (ffi_cif * cif, void (*fn) (void), void *rvalue,
 	      void **avalue, void *closure)
@@ -536,6 +546,16 @@ struct closure_frame
   char argp[];
 };
 
+#ifndef __SANITIZE_ADDRESS__
+# ifdef __clang__
+#  if __has_feature(address_sanitizer)
+#   define __SANITIZE_ADDRESS__
+#  endif
+# endif
+#endif
+#ifdef __SANITIZE_ADDRESS__
+__attribute__((noinline,no_sanitize_address))
+#endif
 int FFI_HIDDEN
 ffi_closure_inner_SYSV (ffi_cif *cif,
 		        void (*fun) (ffi_cif *, void *, void **, void *),
@@ -549,6 +569,16 @@ ffi_closure_inner_SYSV (ffi_cif *cif,
   return cif->flags;
 }
 
+#ifndef __SANITIZE_ADDRESS__
+# ifdef __clang__
+#  if __has_feature(address_sanitizer)
+#   define __SANITIZE_ADDRESS__
+#  endif
+# endif
+#endif
+#ifdef __SANITIZE_ADDRESS__
+__attribute__((noinline,no_sanitize_address))
+#endif
 int FFI_HIDDEN
 ffi_closure_inner_VFP (ffi_cif *cif,
 		       void (*fun) (ffi_cif *, void *, void **, void *),
