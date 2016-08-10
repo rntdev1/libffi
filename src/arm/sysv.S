@@ -228,7 +228,7 @@ ARM_FUNC_START(ffi_closure_SYSV)
 	cfi_startproc
 	stmdb	sp!, {r0-r3}			@ save argument regs
 	cfi_adjust_cfa_offset(16)
-	
+
 #if FFI_EXEC_TRAMPOLINE_TABLE
 	ldr ip, [ip]				@ ip points to the config page, dereference to get the ffi_closure*
 #endif
@@ -275,7 +275,7 @@ ARM_FUNC_START(ffi_closure_VFP)
 	cfi_startproc
 	stmdb	sp!, {r0-r3}			@ save argument regs
 	cfi_adjust_cfa_offset(16)
-	
+
 #if FFI_EXEC_TRAMPOLINE_TABLE
 	ldr ip, [ip]				@ ip points to the config page, dereference to get the ffi_closure*
 #endif
