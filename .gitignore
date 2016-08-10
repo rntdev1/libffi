@@ -34,3 +34,5 @@ build_*/
 darwin_*/
 src/arm/trampoline.S
 **/texinfo.tex
+/x86
+/x86_64
