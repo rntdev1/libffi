@@ -318,9 +318,6 @@ AC_SUBST(TARGET_OBJ)
 
 AC_SUBST(SHELL)
 
-FFI_CFLAGS=""
-AC_SUBST(FFI_CFLAGS)
-
 AC_ARG_ENABLE(debug,
 [  --enable-debug          debugging mode],
   if test "$enable_debug" = "yes"; then
