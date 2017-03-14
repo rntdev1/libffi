@@ -162,21 +162,13 @@ ffi_trampoline_table_alloc ()
 	vm_allocate (mach_task_self (), &config_page, PAGE_MAX_SIZE * 2,
 		     VM_FLAGS_ANYWHERE);
       if (kt != KERN_SUCCESS)
-	{
-	  fprintf (stderr, "vm_allocate() failure: %d at %s:%d\n", kt,
-		   __FILE__, __LINE__);
-	  break;
-	}
+	break;
 
       /* Now drop the second half of the allocation to make room for the trampoline table */
       vm_address_t trampoline_page = config_page + PAGE_MAX_SIZE;
       kt = vm_deallocate (mach_task_self (), trampoline_page, PAGE_MAX_SIZE);
       if (kt != KERN_SUCCESS)
-	{
-	  fprintf (stderr, "vm_deallocate() failure: %d at %s:%d\n", kt,
-		   __FILE__, __LINE__);
-	  break;
-	}
+	break;
 
       /* Remap the trampoline table to directly follow the config page */
       vm_prot_t cur_prot;
@@ -196,13 +188,6 @@ ffi_trampoline_table_alloc ()
       /* If we lost access to the destination trampoline page, drop our config allocation mapping and retry */
       if (kt != KERN_SUCCESS)
 	{
-	  /* Log unexpected failures */
-	  if (kt != KERN_NO_SPACE)
-	    {
-	      fprintf (stderr, "vm_remap() failure: %d at %s:%d\n", kt,
-		       __FILE__, __LINE__);
-	    }
-
 	  vm_deallocate (mach_task_self (), config_page, PAGE_SIZE);
 	  continue;
 	}
@@ -247,18 +232,8 @@ ffi_trampoline_table_free (ffi_trampoline_table *table)
     table->next->prev = table->prev;
 
   /* Deallocate pages */
-  kern_return_t kt;
-  kt = vm_deallocate (mach_task_self (), table->config_page, PAGE_SIZE);
-  if (kt != KERN_SUCCESS)
-    fprintf (stderr, "vm_deallocate() failure: %d at %s:%d\n", kt,
-             __FILE__, __LINE__);
-
-  kt =
-    vm_deallocate (mach_task_self (), table->trampoline_page, PAGE_SIZE);
-  if (kt != KERN_SUCCESS)
-    fprintf (stderr, "vm_deallocate() failure: %d at %s:%d\n", kt,
-             __FILE__, __LINE__);
-
+  vm_deallocate (mach_task_self (), table->config_page, PAGE_SIZE);
+  vm_deallocate (mach_task_self (), table->trampoline_page, PAGE_SIZE);
   mem_callbacks.on_deallocate ((void *) table->config_page, PAGE_MAX_SIZE * 2);
 
   /* Deallocate free list */
