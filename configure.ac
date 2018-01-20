@@ -191,13 +191,13 @@ fi
 
 FFI_EXEC_TRAMPOLINE_TABLE=0
 case "$target" in
-     *arm*-apple-darwin* | aarch64-apple-darwin*)
+     *arm*-apple-* | aarch64-apple-*)
        FFI_EXEC_TRAMPOLINE_TABLE=1
        AC_DEFINE(FFI_EXEC_TRAMPOLINE_TABLE, 1,
                  [Cannot use PROT_EXEC on this target, so, we revert to
                    alternative means])
      ;;
-     *-apple-darwin* | *-*-freebsd* | *-*-kfreebsd* | *-*-openbsd* | *-pc-solaris*)
+     *-apple-* | *-*-freebsd* | *-*-kfreebsd* | *-*-openbsd* | *-pc-solaris* | *-linux-android*)
        AC_DEFINE(FFI_MMAP_EXEC_WRIT, 1,
                  [Cannot use malloc on this target, so, we revert to
                    alternative means])
@@ -317,9 +317,6 @@ changequote([,])
 AC_SUBST(TARGET_OBJ)
 
 AC_SUBST(SHELL)
-
-FFI_CFLAGS=""
-AC_SUBST(FFI_CFLAGS)
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          debugging mode],

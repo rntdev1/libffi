@@ -33,31 +33,82 @@
 #include <fficonfig.h>
 #include <ffi.h>
 #include <ffi_common.h>
-#include <stdlib.h>
 
-static void
-on_allocate (void *base_address, size_t size)
+#ifdef __NetBSD__
+#include <sys/param.h>
+#endif
+
+#if __NetBSD_Version__ - 0 >= 799007200
+/* NetBSD with PROT_MPROTECT */
+#include <sys/mman.h>
+
+#include <stddef.h>
+#include <unistd.h>
+
+static const size_t overhead =
+  (sizeof(max_align_t) > sizeof(void *) + sizeof(size_t)) ?
+    sizeof(max_align_t)
+    : sizeof(void *) + sizeof(size_t);
+
+#define ADD_TO_POINTER(p, d) ((void *)((uintptr_t)(p) + (d)))
+
+void *
+ffi_closure_alloc (size_t size, void **code)
 {
-}
+  static size_t page_size;
+  size_t rounded_size;
+  void *codeseg, *dataseg;
+  int prot;
 
-static void
-on_deallocate (void *base_address, size_t size)
-{
-}
+  /* Expect that PAX mprotect is active and a separate code mapping is necessary. */
+  if (!code)
+    return NULL;
 
-static ffi_mem_callbacks mem_callbacks = {
-  malloc,
-  calloc,
-  free,
-  on_allocate,
-  on_deallocate
-};
+  /* Obtain system page size. */
+  if (!page_size)
+    page_size = sysconf(_SC_PAGESIZE);
+
+  /* Round allocation size up to the next page, keeping in mind the size field and pointer to code map. */
+  rounded_size = (size + overhead + page_size - 1) & ~(page_size - 1);
+
+  /* Primary mapping is RW, but request permission to switch to PROT_EXEC later. */
+  prot = PROT_READ | PROT_WRITE | PROT_MPROTECT(PROT_EXEC);
+  dataseg = mmap(NULL, rounded_size, prot, MAP_ANON | MAP_PRIVATE, -1, 0);
+  if (dataseg == MAP_FAILED)
+    return NULL;
+
+  /* Create secondary mapping and switch it to RX. */
+  codeseg = mremap(dataseg, rounded_size, NULL, rounded_size, MAP_REMAPDUP);
+  if (codeseg == MAP_FAILED) {
+    munmap(dataseg, rounded_size);
+    return NULL;
+  }
+  if (mprotect(codeseg, rounded_size, PROT_READ | PROT_EXEC) == -1) {
+    munmap(codeseg, rounded_size);
+    munmap(dataseg, rounded_size);
+    return NULL;
+  }
+
+  /* Remember allocation size and location of the secondary mapping for ffi_closure_free. */
+  memcpy(dataseg, &rounded_size, sizeof(rounded_size));
+  memcpy(ADD_TO_POINTER(dataseg, sizeof(size_t)), &codeseg, sizeof(void *));
+  *code = ADD_TO_POINTER(codeseg, overhead);
+  return ADD_TO_POINTER(dataseg, overhead);
+}
 
 void
-ffi_set_mem_callbacks (const ffi_mem_callbacks *callbacks)
+ffi_closure_free (void *ptr)
 {
-  mem_callbacks = *callbacks;
+  void *codeseg, *dataseg;
+  size_t rounded_size;
+
+  dataseg = ADD_TO_POINTER(ptr, -overhead);
+  memcpy(&rounded_size, dataseg, sizeof(rounded_size));
+  memcpy(&codeseg, ADD_TO_POINTER(dataseg, sizeof(size_t)), sizeof(void *));
+  munmap(dataseg, rounded_size);
+  munmap(codeseg, rounded_size);
 }
+#else /* !NetBSD with PROT_MPROTECT */
 
 #if !FFI_MMAP_EXEC_WRIT && !FFI_EXEC_TRAMPOLINE_TABLE
 # if __linux__ && !defined(__ANDROID__)
@@ -80,7 +131,7 @@ ffi_set_mem_callbacks (const ffi_mem_callbacks *callbacks)
 #endif
 
 #if FFI_MMAP_EXEC_WRIT && !defined FFI_MMAP_EXEC_SELINUX
-# ifdef __linux__
+# if defined(__linux__) && !defined(__ANDROID__)
 /* When defined to 1 check for SELinux and if SELinux is active,
    don't attempt PROT_EXEC|PROT_WRITE mapping at all, as that
    might cause audit messages.  */
@@ -128,23 +179,8 @@ struct ffi_trampoline_table_entry
 /* Total number of trampolines that fit in one trampoline table */
 #define FFI_TRAMPOLINE_COUNT (PAGE_MAX_SIZE / FFI_TRAMPOLINE_SIZE)
 
-static void ffi_trampoline_table_free (ffi_trampoline_table *table);
-
 static pthread_mutex_t ffi_trampoline_lock = PTHREAD_MUTEX_INITIALIZER;
 static ffi_trampoline_table *ffi_trampoline_tables = NULL;
-
-void
-ffi_deinit (void)
-{
-  while (ffi_trampoline_tables != NULL)
-    {
-      ffi_trampoline_table *table = ffi_trampoline_tables;
-      ffi_trampoline_tables = table->next;
-      ffi_trampoline_table_free (table);
-    }
-
-  pthread_mutex_destroy (&ffi_trampoline_lock);
-}
 
 static ffi_trampoline_table *
 ffi_trampoline_table_alloc (void)
@@ -156,53 +192,49 @@ ffi_trampoline_table_alloc (void)
   vm_prot_t cur_prot;
   vm_prot_t max_prot;
   kern_return_t kt;
+  uint16_t i;
 
-  /* Allocate two pages */
+  /* Allocate two pages -- a config page and a placeholder page */
   config_page = 0x0;
-  kt =
-    vm_allocate (mach_task_self (), &config_page, PAGE_MAX_SIZE * 2,
-                 VM_FLAGS_ANYWHERE);
+  kt = vm_allocate (mach_task_self (), &config_page, PAGE_MAX_SIZE * 2,
+		    VM_FLAGS_ANYWHERE);
   if (kt != KERN_SUCCESS)
     return NULL;
 
-  /* Remap the trampoline table to directly follow the config page */
+  /* Remap the trampoline table on top of the placeholder page */
   trampoline_page = config_page + PAGE_MAX_SIZE;
   trampoline_page_template = (vm_address_t)&ffi_closure_trampoline_table_page;
 #ifdef __arm__
   /* ffi_closure_trampoline_table_page can be thumb-biased on some ARM archs */
   trampoline_page_template &= ~1UL;
 #endif
-  kt =
-    vm_remap (mach_task_self (), &trampoline_page, PAGE_MAX_SIZE, 0x0, VM_FLAGS_OVERWRITE,
-              mach_task_self (), trampoline_page_template, FALSE,
-              &cur_prot, &max_prot, VM_INHERIT_SHARE);
+  kt = vm_remap (mach_task_self (), &trampoline_page, PAGE_MAX_SIZE, 0x0,
+		 VM_FLAGS_OVERWRITE, mach_task_self (), trampoline_page_template,
+		 FALSE, &cur_prot, &max_prot, VM_INHERIT_SHARE);
   if (kt != KERN_SUCCESS)
     {
       vm_deallocate (mach_task_self (), config_page, PAGE_MAX_SIZE * 2);
       return NULL;
     }
 
-  mem_callbacks.on_allocate ((void *) config_page, PAGE_MAX_SIZE * 2);
-
   /* We have valid trampoline and config pages */
-  table = mem_callbacks.calloc (1, sizeof (ffi_trampoline_table));
+  table = calloc (1, sizeof (ffi_trampoline_table));
   table->free_count = FFI_TRAMPOLINE_COUNT;
   table->config_page = config_page;
   table->trampoline_page = trampoline_page;
 
   /* Create and initialize the free list */
   table->free_list_pool =
-    mem_callbacks.calloc (FFI_TRAMPOLINE_COUNT, sizeof (ffi_trampoline_table_entry));
+    calloc (FFI_TRAMPOLINE_COUNT, sizeof (ffi_trampoline_table_entry));
 
-  uint16_t i;
   for (i = 0; i < table->free_count; i++)
     {
       ffi_trampoline_table_entry *entry = &table->free_list_pool[i];
       entry->trampoline =
-        (void *) (table->trampoline_page + (i * FFI_TRAMPOLINE_SIZE));
+	(void *) (table->trampoline_page + (i * FFI_TRAMPOLINE_SIZE));
 
       if (i < table->free_count - 1)
-        entry->next = &table->free_list_pool[i + 1];
+	entry->next = &table->free_list_pool[i + 1];
     }
 
   table->free_list = table->free_list_pool;
@@ -222,18 +254,17 @@ ffi_trampoline_table_free (ffi_trampoline_table *table)
 
   /* Deallocate pages */
   vm_deallocate (mach_task_self (), table->config_page, PAGE_MAX_SIZE * 2);
-  mem_callbacks.on_deallocate ((void *) table->config_page, PAGE_MAX_SIZE * 2);
 
   /* Deallocate free list */
-  mem_callbacks.free (table->free_list_pool);
-  mem_callbacks.free (table);
+  free (table->free_list_pool);
+  free (table);
 }
 
 void *
 ffi_closure_alloc (size_t size, void **code)
 {
   /* Create the closure */
-  ffi_closure *closure = mem_callbacks.malloc (size);
+  ffi_closure *closure = malloc (size);
   if (closure == NULL)
     return NULL;
 
@@ -247,7 +278,7 @@ ffi_closure_alloc (size_t size, void **code)
       if (table == NULL)
 	{
 	  pthread_mutex_unlock (&ffi_trampoline_lock);
-	  mem_callbacks.free (closure);
+	  free (closure);
 	  return NULL;
 	}
 
@@ -312,7 +343,7 @@ ffi_closure_free (void *ptr)
   pthread_mutex_unlock (&ffi_trampoline_lock);
 
   /* Free the closure */
-  mem_callbacks.free (closure);
+  free (closure);
 }
 
 #endif
@@ -491,29 +522,6 @@ static int dlmunmap(void *, size_t);
 
 #include "dlmalloc.c"
 
-void
-ffi_deinit (void)
-{
-  msegmentptr sp;
-
-  sp = &gm->seg;
-  while (sp != NULL)
-    {
-      char *base = sp->base;
-      size_t size = sp->size;
-      flag_t flag = get_segment_flags (sp);
-
-      sp = sp->next;
-
-      if ((flag & IS_MMAPPED_BIT) && !(flag & EXTERN_BIT))
-        {
-          CALL_MUNMAP (base, size);
-        }
-    }
-
-  (void) DESTROY_LOCK (&gm->mutex);
-}
-
 #undef mmap
 #undef munmap
 
@@ -574,7 +582,7 @@ open_temp_exec_file_dir (const char *dir)
   }
 #endif
 
-  lendir = strlen (dir);
+  lendir = (int) strlen (dir);
   tempname = __builtin_alloca (lendir + sizeof (suffix));
 
   if (!tempname)
@@ -771,9 +779,6 @@ dlmmap_locked (void *start, size_t length, int prot, int flags, off_t offset)
 
   execsize += length;
 
-  mem_callbacks.on_allocate (ptr, length);
-  mem_callbacks.on_allocate (start, length);
-
   return start;
 }
 
@@ -793,16 +798,12 @@ dlmmap (void *start, size_t length, int prot,
   if (execfd == -1 && is_emutramp_enabled ())
     {
       ptr = mmap (start, length, prot & ~PROT_EXEC, flags, fd, offset);
-      if (ptr != MFAIL)
-        mem_callbacks.on_allocate (ptr, length);
       return ptr;
     }
 
   if (execfd == -1 && !is_selinux_enabled ())
     {
       ptr = mmap (start, length, prot | PROT_EXEC, flags, fd, offset);
-      if (ptr != MFAIL)
-        mem_callbacks.on_allocate (ptr, length);
 
       if (ptr != MFAIL || (errno != EPERM && errno != EACCES))
 	/* Cool, no need to mess with separate segments.  */
@@ -838,21 +839,15 @@ dlmunmap (void *start, size_t length)
      Yuck.  */
   msegmentptr seg = segment_holding (gm, start);
   void *code;
-  int ret;
 
   if (seg && (code = add_segment_exec_offset (start, seg)) != start)
     {
-      ret = munmap (code, length);
+      int ret = munmap (code, length);
       if (ret)
 	return ret;
-      else
-        mem_callbacks.on_deallocate (code, length);
     }
 
-  ret = munmap (start, length);
-  if (ret == 0)
-    mem_callbacks.on_deallocate (start, length);
-  return ret;
+  return munmap (start, length);
 }
 
 #if FFI_CLOSURE_FREE_CODE
@@ -926,21 +921,16 @@ ffi_closure_alloc (size_t size, void **code)
   if (!code)
     return NULL;
 
-  return *code = mem_callbacks.malloc (size);
+  return *code = malloc (size);
 }
 
 void
 ffi_closure_free (void *ptr)
 {
-  mem_callbacks.free (ptr);
+  free (ptr);
 }
 
 # endif /* ! FFI_MMAP_EXEC_WRIT */
-#else
-
-void
-ffi_deinit (void)
-{
-}
-
 #endif /* FFI_CLOSURES */
+
+#endif /* NetBSD with PROT_MPROTECT */

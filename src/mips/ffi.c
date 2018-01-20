@@ -116,7 +116,7 @@ static void ffi_prep_args(char *stack,
       
       if ((a - 1) & (unsigned long) argp)
 	{
-	  argp = (char *) ALIGN(argp, a);
+	  argp = (char *) FFI_ALIGN(argp, a);
 	  FIX_ARGP;
 	}
 
@@ -247,7 +247,7 @@ calc_n32_struct_flags(int soft_float, ffi_type *arg,
   while ((e = arg->elements[index]))
     {
       /* Align this object.  */
-      *loc = ALIGN(*loc, e->alignment);
+      *loc = FFI_ALIGN(*loc, e->alignment);
       if (e->type == FFI_TYPE_DOUBLE)
 	{
           /* Already aligned to FFI_SIZEOF_ARG.  */
@@ -262,7 +262,7 @@ calc_n32_struct_flags(int soft_float, ffi_type *arg,
       index++;
     }
   /* Next Argument register at alignment of FFI_SIZEOF_ARG.  */
-  *arg_reg = ALIGN(*loc, FFI_SIZEOF_ARG) / FFI_SIZEOF_ARG;
+  *arg_reg = FFI_ALIGN(*loc, FFI_SIZEOF_ARG) / FFI_SIZEOF_ARG;
 
   return flags;
 }
@@ -474,7 +474,7 @@ ffi_status ffi_prep_cif_machdep(ffi_cif *cif)
 	    break;
           case FFI_TYPE_LONGDOUBLE:
             /* Align it.  */
-            arg_reg = ALIGN(arg_reg, 2);
+            arg_reg = FFI_ALIGN(arg_reg, 2);
             /* Treat it as two adjacent doubles.  */
 	    if (soft_float) 
 	      {
@@ -715,7 +715,11 @@ ffi_prep_closure_loc (ffi_closure *closure,
   /* lui  $12,high(codeloc) */
   tramp[2] = 0x3c0c0000 | ((unsigned)codeloc >> 16);
   /* jr   $25          */
+#if !defined(__mips_isa_rev) || (__mips_isa_rev<6)
   tramp[3] = 0x03200008;
+#else
+  tramp[3] = 0x03200009;
+#endif
   /* ori  $12,low(codeloc)  */
   tramp[4] = 0x358c0000 | ((unsigned)codeloc & 0xffff);
 #else
@@ -743,7 +747,11 @@ ffi_prep_closure_loc (ffi_closure *closure,
   /* ori  $25,low(fn)  */
   tramp[10] = 0x37390000 | ((unsigned long)fn  & 0xffff);
   /* jr   $25          */
+#if !defined(__mips_isa_rev) || (__mips_isa_rev<6)
   tramp[11] = 0x03200008;
+#else
+  tramp[11] = 0x03200009;
+#endif
   /* ori  $12,low(codeloc)  */
   tramp[12] = 0x358c0000 | ((unsigned long)codeloc & 0xffff);
 
@@ -852,7 +860,7 @@ ffi_closure_mips_inner_O32 (ffi_cif *cif,
 	    }
 	  seen_int = 1;
 	}
-      argn += ALIGN(arg_types[i]->size, FFI_SIZEOF_ARG) / FFI_SIZEOF_ARG;
+      argn += FFI_ALIGN(arg_types[i]->size, FFI_SIZEOF_ARG) / FFI_SIZEOF_ARG;
       i++;
     }
 
@@ -893,7 +901,7 @@ copy_struct_N32(char *target, unsigned offset, ffi_abi abi, ffi_type *type,
       char *argp;
       char *fpp;
 
-      o = ALIGN(offset, elt_type->alignment);
+      o = FFI_ALIGN(offset, elt_type->alignment);
       arg_offset += o - offset;
       offset = o;
       argn += arg_offset / sizeof(ffi_arg);
@@ -976,7 +984,7 @@ ffi_closure_mips_inner_N32 (ffi_cif *cif,
           argp = (argn >= 8 || soft_float) ? ar + argn : fpr + argn;
           if ((arg_types[i]->type == FFI_TYPE_LONGDOUBLE) && ((unsigned)argp & (arg_types[i]->alignment-1)))
             {
-              argp=(ffi_arg*)ALIGN(argp,arg_types[i]->alignment);
+              argp=(ffi_arg*)FFI_ALIGN(argp,arg_types[i]->alignment);
               argn++;
             }
 #if defined(__MIPSEB__) || defined(_MIPSEB)
@@ -991,7 +999,7 @@ ffi_closure_mips_inner_N32 (ffi_cif *cif,
           unsigned type = arg_types[i]->type;
 
           if (arg_types[i]->alignment > sizeof(ffi_arg))
-            argn = ALIGN(argn, arg_types[i]->alignment / sizeof(ffi_arg));
+            argn = FFI_ALIGN(argn, arg_types[i]->alignment / sizeof(ffi_arg));
 
           argp = ar + argn;
 
@@ -1052,7 +1060,7 @@ ffi_closure_mips_inner_N32 (ffi_cif *cif,
               break;
             }
         }
-      argn += ALIGN(arg_types[i]->size, sizeof(ffi_arg)) / sizeof(ffi_arg);
+      argn += FFI_ALIGN(arg_types[i]->size, sizeof(ffi_arg)) / sizeof(ffi_arg);
       i++;
     }
 
