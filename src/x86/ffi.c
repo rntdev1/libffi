@@ -248,16 +248,6 @@ static const struct abi_params abi_params[FFI_LAST_ABI] = {
 
 extern void FFI_DECLARE_FASTCALL ffi_call_i386(struct call_frame *, char *) FFI_HIDDEN;
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 static void
 ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
 	      void **avalue, void *closure)
@@ -355,6 +345,15 @@ ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
 	  size_t za = FFI_ALIGN (z, FFI_SIZEOF_ARG);
 	  size_t align = FFI_SIZEOF_ARG;
 
+	  /* Issue 434: For thiscall and fastcall, if the paramter passed
+	     as 64-bit integer or struct, all following integer paramters
+	     will be passed on stack.  */
+	  if ((cabi == FFI_THISCALL || cabi == FFI_FASTCALL)
+	      && (t == FFI_TYPE_SINT64
+		  || t == FFI_TYPE_UINT64
+		  || t == FFI_TYPE_STRUCT))
+	    narg_reg = 2;
+
 	  /* Alignment rules for arguments are quite complex.  Vectors and
 	     structures with 16 byte alignment get it.  Note that long double
 	     on Darwin does have 16 byte alignment, and does not get this
@@ -413,16 +412,6 @@ struct closure_frame
   void *user_data;				/* 36 */
 };
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 int FFI_HIDDEN FFI_DECLARE_FASTCALL
 ffi_closure_inner (struct closure_frame *frame, char *stack)
 {
@@ -495,6 +484,15 @@ ffi_closure_inner (struct closure_frame *frame, char *stack)
 	  if (t == FFI_TYPE_STRUCT && ty->alignment >= 16)
 	    align = 16;
 
+	  /* Issue 434: For thiscall and fastcall, if the paramter passed
+	     as 64-bit integer or struct, all following integer paramters
+	     will be passed on stack.  */
+	  if ((cabi == FFI_THISCALL || cabi == FFI_FASTCALL)
+	      && (t == FFI_TYPE_SINT64
+		  || t == FFI_TYPE_UINT64
+		  || t == FFI_TYPE_STRUCT))
+	    narg_reg = 2;
+
 	  if (dir < 0)
 	    {
 	      /* ??? These reverse argument ABIs are probably too old
@@ -547,6 +545,7 @@ ffi_prep_closure_loc (ffi_closure* closure,
     case FFI_REGISTER:
       dest = ffi_closure_REGISTER;
       op = 0x68;  /* pushl imm */
+      break;
     default:
       return FFI_BAD_ABI;
     }
