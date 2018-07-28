@@ -53,6 +53,10 @@ extern "C" {
 #define @TARGET@
 #endif
 
+#if @STATIC@
+#define FFI_STATIC_BUILD
+#endif
+
 /* ---- System configuration information --------------------------------- */
 
 #include <ffitarget.h>
