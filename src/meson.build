@@ -19,11 +19,10 @@ if host_cpu_family.startswith('x86')
   if host_system == 'windows'
     if size_t == 4
       TARGET = 'X86_WIN32'
+      c_sources = ['ffi.c']
       if cc.get_id() == 'msvc'
-        c_sources = ['ffiold-msvc.c']
-        asm_sources = ['win32_msvc.S']
+        asm_sources = ['sysv_intel.S']
       else
-        c_sources = ['ffi.c']
         asm_sources = ['sysv.S']
       endif
     else

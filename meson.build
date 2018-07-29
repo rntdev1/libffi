@@ -1,4 +1,4 @@
-project('libffi', 'c', version : '3.2.9999',
+project('libffi', 'c', version : '3.3',
         meson_version : '>= 0.48.0',
         default_options : ['buildtype=debugoptimized',
                            'warning_level=1'])
@@ -55,6 +55,19 @@ if host_cpu_family == 'x86' or host_cpu_family == 'x86_64'
     ffi_conf.set('HAVE_AS_STRING_PSEUDO_OP', 1)
   endif
 endif
+
+ptrauth = '''#ifdef __clang__
+# if __has_feature(ptrauth_calls)
+#  define HAVE_PTRAUTH 1
+# endif
+#endif
+
+#ifndef HAVE_PTRAUTH
+# error Pointer authentication not supported
+#endif
+'''
+ffi_conf.set('HAVE_PTRAUTH',
+  cc.compiles(ptrauth, name : 'pointer authentication'))
 
 # If not defined, define it as unsigned int
 size_t = cc.sizeof('size_t')
@@ -141,15 +154,19 @@ endif
 #ffi_conf.set('HAVE_MMAP_ANON',
 #  cc.compiles(mmap_anon, name : 'mmap anonymous'))
 
+ffi_conf.set10('STDC_HEADERS', 1)
+
 # Misc functions
 #ffi_conf.set('HAVE_ALLOCA', cc.has_function('alloca')) # XXX: unused
-ffi_conf.set10('HAVE_MEMCPY', cc.has_function('memcpy'))
+ffi_conf.set('HAVE_MEMCPY', cc.has_function('memcpy'))
+ffi_conf.set('HAVE_MEMFD_CREATE', cc.has_function('memfd_create'))
 ffi_conf.set('HAVE_MKOSTEMP', cc.has_function('mkostemp'))
 
 # Misc headers
 ffi_conf.set10('HAVE_ALLOCA_H', cc.has_header('alloca.h'))
 ffi_conf.set('HAVE_INTTYPES_H', cc.has_header('inttypes.h'))
 ffi_conf.set('HAVE_STDINT_H', cc.has_header('stdint.h'))
+ffi_conf.set('HAVE_SYS_MEMFD_H', cc.has_header('sys/memfd.h'))
 # Checks in the configure file that aren't used
 #ffi_conf.set10('HAVE_DLFCN_H', cc.has_header('dlfcn.h'))
 #ffi_conf.set10('HAVE_MEMORY_H', cc.has_header('memory.h'))
