@@ -65,6 +65,11 @@ elif host_cpu_family == 'arm'
   TARGET = 'ARM'
   c_sources = ['ffi.c']
   asm_sources = ['sysv.S']
+elif host_cpu_family == 'mips'
+  arch_subdir = 'mips'
+  TARGET = 'MIPS'
+  c_sources = ['ffi.c']
+  asm_sources = ['o32.S', 'n32.S']
 endif
 
 if TARGET == ''
