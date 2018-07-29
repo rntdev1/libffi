@@ -1,5 +1,5 @@
-project('libffi', 'c', version : '3.2.1',
         meson_version : '>= 0.37.1',
+project('libffi', 'c', version : '3.3-rc0',
         default_options : ['buildtype=debugoptimized',
                            'warning_level=1'])
 
@@ -9,6 +9,7 @@ cc = meson.get_compiler('c')
 add_project_arguments('-DFFI_BUILDING', language : 'c')
 
 ffi_conf = configuration_data()
+ffi_conf.set('VERSION', meson.project_version())
 
 # NOTE: host = "cross" or "target"
 host_cpu_family = host_machine.cpu_family()
@@ -193,7 +194,9 @@ msvcc = find_program('msvcc.sh')
 ffi_pc_conf = configuration_data()
 ffi_pc_conf.set('prefix', get_option('prefix'))
 ffi_pc_conf.set('exec_prefix', get_option('prefix'))
-ffi_pc_conf.set('libdir', '@0@/@1@'.format(get_option('prefix'), get_option('libdir')))
+libdir = '@0@/@1@'.format(get_option('prefix'), get_option('libdir'))
+ffi_pc_conf.set('libdir', libdir)
+ffi_pc_conf.set('toolexeclibdir', libdir)
 ffi_pc_conf.set('includedir', '@0@/include'.format(get_option('prefix')))
 ffi_pc_conf.set('PACKAGE_VERSION', meson.project_version())
 pkgconfigdir = get_option('libdir') + '/pkgconfig'
