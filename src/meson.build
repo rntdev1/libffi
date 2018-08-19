@@ -108,7 +108,11 @@ if cc.get_id() == 'msvc'
     else
       error('Unknown cpu_family: ' + host_cpu_family)
     endif
-    assembler_args = [ml, '/Fo', '@OUTPUT@', '/c', '@INPUT@']
+    assembler_args = [ml]
+    if host_cpu_family == 'x86'
+      assembler_args += '/safeseh'
+    endif
+    assembler_args += ['/Fo', '@OUTPUT@', '/c', '@INPUT@']
     if get_option('buildtype').startswith('debug')
       assembler_args += ['/Zi', '/Zd']
     endif
