@@ -61,12 +61,20 @@ if cc.get_id() == 'msvc'
   # FIXME: Add native support in Meson for this.
   cl = find_program('cl')
   ml = find_program('ml', 'ml64')
+
   ffi_asm_objs = []
+
+  mlflags = []
+  if size_t == 4
+    mlflags += '/safeseh'
+  endif
+
   foreach asm_source : ffi_asm_sources
     incflags = ['/I' + join_paths(meson.current_source_dir(), '..'),
                 '/I' + join_paths(meson.current_build_dir(), '..'),
                 '/I' + join_paths(meson.current_source_dir(), '..', 'include'),
                 '/I' + join_paths(meson.current_build_dir(), '..', 'include')]
+
     preproc_name = asm_source.underscorify() + '.i'
     obj_name = asm_source.underscorify() + '.obj'
     preproc = custom_target(preproc_name,
@@ -78,8 +86,9 @@ if cc.get_id() == 'msvc'
     ffi_asm_objs += custom_target(obj_name,
         input : preproc,
         output : obj_name,
-        command : [ml, '/Fo', '@OUTPUT@', '/c', '@INPUT@'])
+        command : [ml] + mlflags + ['/Fo', '@OUTPUT@', '/c', '@INPUT@'])
   endforeach
+
   ffi_asm_sources = ffi_asm_objs
 endif
 
