@@ -57,6 +57,19 @@ if host_cpu_family == 'x86' or host_cpu_family == 'x86_64'
   endif
 endif
 
+ptrauth = '''#ifdef __clang__
+# if __has_feature(ptrauth_calls)
+#  define HAVE_PTRAUTH 1
+# endif
+#endif
+
+#ifndef HAVE_PTRAUTH
+# error Pointer authentication not supported
+#endif
+'''
+ffi_conf.set('HAVE_PTRAUTH',
+  cc.compiles(ptrauth, name : 'pointer authentication'))
+
 # If not defined, define it as unsigned int
 size_t = cc.sizeof('size_t')
 if size_t > 0
