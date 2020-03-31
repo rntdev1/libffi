@@ -282,7 +282,7 @@ classify_argument (ffi_type *type, enum x86_64_reg_class classes[],
 
 	    /* The X86_64_SSEUP_CLASS should be always preceded by
 	       X86_64_SSE_CLASS or X86_64_SSEUP_CLASS.  */
-	    if (classes[i] == X86_64_SSEUP_CLASS
+	    if (i > 1 && classes[i] == X86_64_SSEUP_CLASS
 		&& classes[i - 1] != X86_64_SSE_CLASS
 		&& classes[i - 1] != X86_64_SSEUP_CLASS)
 	      {
@@ -293,7 +293,7 @@ classify_argument (ffi_type *type, enum x86_64_reg_class classes[],
 
 	    /*  If X86_64_X87UP_CLASS isn't preceded by X86_64_X87_CLASS,
 		everything should be passed in memory.  */
-	    if (classes[i] == X86_64_X87UP_CLASS
+	    if (i > 1 && classes[i] == X86_64_X87UP_CLASS
 		&& (classes[i - 1] != X86_64_X87_CLASS))
 	      {
 		/* The first one should never be X86_64_X87UP_CLASS.  */
@@ -394,7 +394,7 @@ extern ffi_status
 ffi_prep_cif_machdep_efi64(ffi_cif *cif);
 #endif
 
-ffi_status
+ffi_status FFI_HIDDEN
 ffi_prep_cif_machdep (ffi_cif *cif)
 {
   int gprcount, ssecount, i, avn, ngpr, nsse;
@@ -451,9 +451,11 @@ ffi_prep_cif_machdep (ffi_cif *cif)
     case FFI_TYPE_DOUBLE:
       flags = UNIX64_RET_XMM64;
       break;
+#if FFI_TYPE_LONGDOUBLE != FFI_TYPE_DOUBLE
     case FFI_TYPE_LONGDOUBLE:
       flags = UNIX64_RET_X87;
       break;
+#endif
     case FFI_TYPE_STRUCT:
       n = examine_argument (cif->rtype, classes, 1, &ngpr, &nsse);
       if (n == 0)
@@ -552,16 +554,6 @@ ffi_prep_cif_machdep (ffi_cif *cif)
   return FFI_OK;
 }
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 static void
 ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
 	      void **avalue, void *closure)
@@ -736,13 +728,15 @@ ffi_prep_closure_loc (ffi_closure* closure,
 		      void *user_data,
 		      void *codeloc)
 {
-  static const unsigned char trampoline[16] = {
-    /* leaq  -0x7(%rip),%r10   # 0x0  */
-    0x4c, 0x8d, 0x15, 0xf9, 0xff, 0xff, 0xff,
-    /* jmpq  *0x3(%rip)        # 0x10 */
-    0xff, 0x25, 0x03, 0x00, 0x00, 0x00,
-    /* nopl  (%rax) */
-    0x0f, 0x1f, 0x00
+  static const unsigned char trampoline[24] = {
+    /* endbr64 */
+    0xf3, 0x0f, 0x1e, 0xfa,
+    /* leaq  -0xb(%rip),%r10   # 0x0  */
+    0x4c, 0x8d, 0x15, 0xf5, 0xff, 0xff, 0xff,
+    /* jmpq  *0x7(%rip)        # 0x18 */
+    0xff, 0x25, 0x07, 0x00, 0x00, 0x00,
+    /* nopl  0(%rax) */
+    0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00
   };
   void (*dest)(void);
   char *tramp = closure->tramp;
@@ -760,7 +754,7 @@ ffi_prep_closure_loc (ffi_closure* closure,
     dest = ffi_closure_unix64;
 
   memcpy (tramp, trampoline, sizeof(trampoline));
-  *(UINT64 *)(tramp + 16) = (uintptr_t)dest;
+  *(UINT64 *)(tramp + sizeof (trampoline)) = (uintptr_t)dest;
 
   closure->cif = cif;
   closure->fun = fun;
@@ -769,16 +763,6 @@ ffi_prep_closure_loc (ffi_closure* closure,
   return FFI_OK;
 }
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 int FFI_HIDDEN
 ffi_closure_unix64_inner(ffi_cif *cif,
 			 void (*fun)(ffi_cif*, void*, void**, void*),

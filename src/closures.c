@@ -1,5 +1,6 @@
 /* -----------------------------------------------------------------------
-   closures.c - Copyright (c) 2007, 2009, 2010  Red Hat, Inc.
+   closures.c - Copyright (c) 2019 Anthony Green
+                Copyright (c) 2007, 2009, 2010 Red Hat, Inc.
                 Copyright (C) 2007, 2009, 2010 Free Software Foundation, Inc
                 Copyright (c) 2011 Plausible Labs Cooperative, Inc.
 
@@ -33,31 +34,6 @@
 #include <fficonfig.h>
 #include <ffi.h>
 #include <ffi_common.h>
-#include <stdlib.h>
-
-static void
-on_allocate (void *base_address, size_t size)
-{
-}
-
-static void
-on_deallocate (void *base_address, size_t size)
-{
-}
-
-static ffi_mem_callbacks mem_callbacks = {
-  malloc,
-  calloc,
-  free,
-  on_allocate,
-  on_deallocate
-};
-
-void
-ffi_set_mem_callbacks (const ffi_mem_callbacks *callbacks)
-{
-  mem_callbacks = *callbacks;
-}
 
 #ifdef __NetBSD__
 #include <sys/param.h>
@@ -114,9 +90,6 @@ ffi_closure_alloc (size_t size, void **code)
     return NULL;
   }
 
-  mem_callbacks.on_allocate (dataseg, rounded_size);
-  mem_callbacks.on_allocate (codeseg, rounded_size);
-
   /* Remember allocation size and location of the secondary mapping for ffi_closure_free. */
   memcpy(dataseg, &rounded_size, sizeof(rounded_size));
   memcpy(ADD_TO_POINTER(dataseg, sizeof(size_t)), &codeseg, sizeof(void *));
@@ -135,9 +108,6 @@ ffi_closure_free (void *ptr)
   memcpy(&codeseg, ADD_TO_POINTER(dataseg, sizeof(size_t)), sizeof(void *));
   munmap(dataseg, rounded_size);
   munmap(codeseg, rounded_size);
-
-  mem_callbacks.on_deallocate (codeseg, rounded_size);
-  mem_callbacks.on_deallocate (dataseg, rounded_size);
 }
 #else /* !NetBSD with PROT_MPROTECT */
 
@@ -153,11 +123,20 @@ ffi_closure_free (void *ptr)
 #  define FFI_MMAP_EXEC_WRIT 1
 #  define HAVE_MNTENT 1
 # endif
-# if defined(X86_WIN32) || defined(X86_WIN64) || defined(__OS2__)
+# if defined(X86_WIN32) || defined(X86_WIN64) || defined(_M_ARM64) || defined(__OS2__)
 /* Windows systems may have Data Execution Protection (DEP) enabled, 
    which requires the use of VirtualMalloc/VirtualFree to alloc/free
    executable memory. */
 #  define FFI_MMAP_EXEC_WRIT 1
+# endif
+#endif
+
+#if FFI_MMAP_EXEC_WRIT && !defined FFI_MMAP_EXEC_SELINUX
+# if defined(__linux__) && !defined(__ANDROID__)
+/* When defined to 1 check for SELinux and if SELinux is active,
+   don't attempt PROT_EXEC|PROT_WRITE mapping at all, as that
+   might cause audit messages.  */
+#  define FFI_MMAP_EXEC_SELINUX 1
 # endif
 #endif
 
@@ -197,30 +176,15 @@ struct ffi_trampoline_table
 
 struct ffi_trampoline_table_entry
 {
-  void *(*trampoline) ();
+  void *(*trampoline) (void);
   ffi_trampoline_table_entry *next;
 };
 
 /* Total number of trampolines that fit in one trampoline table */
 #define FFI_TRAMPOLINE_COUNT (PAGE_MAX_SIZE / FFI_TRAMPOLINE_SIZE)
 
-static void ffi_trampoline_table_free (ffi_trampoline_table *table);
-
 static pthread_mutex_t ffi_trampoline_lock = PTHREAD_MUTEX_INITIALIZER;
 static ffi_trampoline_table *ffi_trampoline_tables = NULL;
-
-void
-ffi_deinit (void)
-{
-  while (ffi_trampoline_tables != NULL)
-    {
-      ffi_trampoline_table *table = ffi_trampoline_tables;
-      ffi_trampoline_tables = table->next;
-      ffi_trampoline_table_free (table);
-    }
-
-  pthread_mutex_destroy (&ffi_trampoline_lock);
-}
 
 static ffi_trampoline_table *
 ffi_trampoline_table_alloc (void)
@@ -257,17 +221,15 @@ ffi_trampoline_table_alloc (void)
       return NULL;
     }
 
-  mem_callbacks.on_allocate ((void *) config_page, PAGE_MAX_SIZE * 2);
-
   /* We have valid trampoline and config pages */
-  table = mem_callbacks.calloc (1, sizeof (ffi_trampoline_table));
+  table = calloc (1, sizeof (ffi_trampoline_table));
   table->free_count = FFI_TRAMPOLINE_COUNT;
   table->config_page = config_page;
   table->trampoline_page = trampoline_page;
 
   /* Create and initialize the free list */
   table->free_list_pool =
-    mem_callbacks.calloc (FFI_TRAMPOLINE_COUNT, sizeof (ffi_trampoline_table_entry));
+    calloc (FFI_TRAMPOLINE_COUNT, sizeof (ffi_trampoline_table_entry));
 
   for (i = 0; i < table->free_count; i++)
     {
@@ -296,18 +258,17 @@ ffi_trampoline_table_free (ffi_trampoline_table *table)
 
   /* Deallocate pages */
   vm_deallocate (mach_task_self (), table->config_page, PAGE_MAX_SIZE * 2);
-  mem_callbacks.on_deallocate ((void *) table->config_page, PAGE_MAX_SIZE * 2);
 
   /* Deallocate free list */
-  mem_callbacks.free (table->free_list_pool);
-  mem_callbacks.free (table);
+  free (table->free_list_pool);
+  free (table);
 }
 
 void *
 ffi_closure_alloc (size_t size, void **code)
 {
   /* Create the closure */
-  ffi_closure *closure = mem_callbacks.malloc (size);
+  ffi_closure *closure = malloc (size);
   if (closure == NULL)
     return NULL;
 
@@ -321,7 +282,7 @@ ffi_closure_alloc (size_t size, void **code)
       if (table == NULL)
 	{
 	  pthread_mutex_unlock (&ffi_trampoline_lock);
-	  mem_callbacks.free (closure);
+	  free (closure);
 	  return NULL;
 	}
 
@@ -389,7 +350,7 @@ ffi_closure_free (void *ptr)
   pthread_mutex_unlock (&ffi_trampoline_lock);
 
   /* Free the closure */
-  mem_callbacks.free (closure);
+  free (closure);
 }
 
 #endif
@@ -431,7 +392,7 @@ ffi_closure_free (void *ptr)
 #endif
 #include <string.h>
 #include <stdio.h>
-#if !defined(X86_WIN32) && !defined(X86_WIN64)
+#if !defined(X86_WIN32) && !defined(X86_WIN64) && !defined(_M_ARM64)
 #ifdef HAVE_MNTENT
 #include <mntent.h>
 #endif /* HAVE_MNTENT */
@@ -443,7 +404,89 @@ ffi_closure_free (void *ptr)
 #include <sys/mman.h>
 #define LACKS_SYS_MMAN_H 1
 
+#if FFI_MMAP_EXEC_SELINUX
+#include <sys/statfs.h>
+#include <stdlib.h>
+
+static int selinux_enabled = -1;
+
+static int
+selinux_enabled_check (void)
+{
+  struct statfs sfs;
+  FILE *f;
+  char *buf = NULL;
+  size_t len = 0;
+
+  if (statfs ("/selinux", &sfs) >= 0
+      && (unsigned int) sfs.f_type == 0xf97cff8cU)
+    return 1;
+  f = fopen ("/proc/mounts", "r");
+  if (f == NULL)
+    return 0;
+  while (getline (&buf, &len, f) >= 0)
+    {
+      char *p = strchr (buf, ' ');
+      if (p == NULL)
+        break;
+      p = strchr (p + 1, ' ');
+      if (p == NULL)
+        break;
+      if (strncmp (p + 1, "selinuxfs ", 10) == 0)
+        {
+          free (buf);
+          fclose (f);
+          return 1;
+        }
+    }
+  free (buf);
+  fclose (f);
+  return 0;
+}
+
+#define is_selinux_enabled() (selinux_enabled >= 0 ? selinux_enabled \
+			      : (selinux_enabled = selinux_enabled_check ()))
+
+#else
+
 #define is_selinux_enabled() 0
+
+#endif /* !FFI_MMAP_EXEC_SELINUX */
+
+/* On PaX enable kernels that have MPROTECT enable we can't use PROT_EXEC. */
+#ifdef FFI_MMAP_EXEC_EMUTRAMP_PAX
+#include <stdlib.h>
+
+static int emutramp_enabled = -1;
+
+static int
+emutramp_enabled_check (void)
+{
+  char *buf = NULL;
+  size_t len = 0;
+  FILE *f;
+  int ret;
+  f = fopen ("/proc/self/status", "r");
+  if (f == NULL)
+    return 0;
+  ret = 0;
+
+  while (getline (&buf, &len, f) != -1)
+    if (!strncmp (buf, "PaX:", 4))
+      {
+        char emutramp;
+        if (sscanf (buf, "%*s %*c%c", &emutramp) == 1)
+          ret = (emutramp == 'E');
+        break;
+      }
+  free (buf);
+  fclose (f);
+  return ret;
+}
+
+#define is_emutramp_enabled() (emutramp_enabled >= 0 ? emutramp_enabled \
+                               : (emutramp_enabled = emutramp_enabled_check ()))
+#endif /* FFI_MMAP_EXEC_EMUTRAMP_PAX */
 
 #elif defined (__CYGWIN__) || defined(__INTERIX)
 
@@ -454,7 +497,9 @@ ffi_closure_free (void *ptr)
 
 #endif /* !defined(X86_WIN32) && !defined(X86_WIN64) */
 
+#ifndef FFI_MMAP_EXEC_EMUTRAMP_PAX
 #define is_emutramp_enabled() 0
+#endif /* FFI_MMAP_EXEC_EMUTRAMP_PAX */
 
 /* Declare all functions defined in dlmalloc.c as static.  */
 static void *dlmalloc(size_t);
@@ -473,7 +518,7 @@ static int dlmalloc_trim(size_t) MAYBE_UNUSED;
 static size_t dlmalloc_usable_size(void*) MAYBE_UNUSED;
 static void dlmalloc_stats(void) MAYBE_UNUSED;
 
-#if !(defined(X86_WIN32) || defined(X86_WIN64) || defined(__OS2__)) || defined (__CYGWIN__) || defined(__INTERIX)
+#if !(defined(X86_WIN32) || defined(X86_WIN64) || defined(_M_ARM64) || defined(__OS2__)) || defined (__CYGWIN__) || defined(__INTERIX)
 /* Use these for mmap and munmap within dlmalloc.c.  */
 static void *dlmmap(void *, size_t, int, int, int, off_t);
 static int dlmunmap(void *, size_t);
@@ -484,33 +529,10 @@ static int dlmunmap(void *, size_t);
 
 #include "dlmalloc.c"
 
-void
-ffi_deinit (void)
-{
-  msegmentptr sp;
-
-  sp = &gm->seg;
-  while (sp != NULL)
-    {
-      char *base = sp->base;
-      size_t size = sp->size;
-      flag_t flag = get_segment_flags (sp);
-
-      sp = sp->next;
-
-      if ((flag & IS_MMAPPED_BIT) && !(flag & EXTERN_BIT))
-        {
-          CALL_MUNMAP (base, size);
-        }
-    }
-
-  (void) DESTROY_LOCK (&gm->mutex);
-}
-
 #undef mmap
 #undef munmap
 
-#if !(defined(X86_WIN32) || defined(X86_WIN64) || defined(__OS2__)) || defined (__CYGWIN__) || defined(__INTERIX)
+#if !(defined(X86_WIN32) || defined(X86_WIN64) || defined(_M_ARM64) || defined(__OS2__)) || defined (__CYGWIN__) || defined(__INTERIX)
 
 /* A mutex used to synchronize access to *exec* variables in this file.  */
 static pthread_mutex_t open_temp_exec_file_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -774,7 +796,13 @@ dlmmap_locked (void *start, size_t length, int prot, int flags, off_t offset)
 	  close (execfd);
 	  goto retry_open;
 	}
-      ftruncate (execfd, offset);
+      if (ftruncate (execfd, offset) != 0)
+      {
+        /* Fixme : Error logs can be added here. Returning an error for
+         * ftruncte() will not add any advantage as it is being
+         * validating in the error case. */
+      }
+
       return MFAIL;
     }
   else if (!offset
@@ -786,16 +814,18 @@ dlmmap_locked (void *start, size_t length, int prot, int flags, off_t offset)
   if (start == MFAIL)
     {
       munmap (ptr, length);
-      ftruncate (execfd, offset);
+      if (ftruncate (execfd, offset) != 0)
+      {
+        /* Fixme : Error logs can be added here. Returning an error for
+         * ftruncte() will not add any advantage as it is being
+         * validating in the error case. */
+      }
       return start;
     }
 
   mmap_exec_offset ((char *)start, length) = (char*)ptr - (char*)start;
 
   execsize += length;
-
-  mem_callbacks.on_allocate (ptr, length);
-  mem_callbacks.on_allocate (start, length);
 
   return start;
 }
@@ -816,16 +846,12 @@ dlmmap (void *start, size_t length, int prot,
   if (execfd == -1 && is_emutramp_enabled ())
     {
       ptr = mmap (start, length, prot & ~PROT_EXEC, flags, fd, offset);
-      if (ptr != MFAIL)
-        mem_callbacks.on_allocate (ptr, length);
       return ptr;
     }
 
   if (execfd == -1 && !is_selinux_enabled ())
     {
       ptr = mmap (start, length, prot | PROT_EXEC, flags, fd, offset);
-      if (ptr != MFAIL)
-        mem_callbacks.on_allocate (ptr, length);
 
       if (ptr != MFAIL || (errno != EPERM && errno != EACCES))
 	/* Cool, no need to mess with separate segments.  */
@@ -861,21 +887,15 @@ dlmunmap (void *start, size_t length)
      Yuck.  */
   msegmentptr seg = segment_holding (gm, start);
   void *code;
-  int ret;
 
   if (seg && (code = add_segment_exec_offset (start, seg)) != start)
     {
-      ret = munmap (code, length);
+      int ret = munmap (code, length);
       if (ret)
 	return ret;
-      else
-        mem_callbacks.on_deallocate (code, length);
     }
 
-  ret = munmap (start, length);
-  if (ret == 0)
-    mem_callbacks.on_deallocate (start, length);
-  return ret;
+  return munmap (start, length);
 }
 
 #if FFI_CLOSURE_FREE_CODE
@@ -894,7 +914,7 @@ segment_holding_code (mstate m, char* addr)
 }
 #endif
 
-#endif /* !(defined(X86_WIN32) || defined(X86_WIN64) || defined(__OS2__)) || defined (__CYGWIN__) || defined(__INTERIX) */
+#endif /* !(defined(X86_WIN32) || defined(X86_WIN64) || defined(_M_ARM64) || defined(__OS2__)) || defined (__CYGWIN__) || defined(__INTERIX) */
 
 /* Allocate a chunk of memory with the given size.  Returns a pointer
    to the writable address, and sets *CODE to the executable
@@ -907,7 +927,7 @@ ffi_closure_alloc (size_t size, void **code)
   if (!code)
     return NULL;
 
-  ptr = dlmalloc (size);
+  ptr = FFI_CLOSURE_PTR (dlmalloc (size));
 
   if (ptr)
     {
@@ -917,6 +937,20 @@ ffi_closure_alloc (size_t size, void **code)
     }
 
   return ptr;
+}
+
+void *
+ffi_data_to_code_pointer (void *data)
+{
+  msegmentptr seg = segment_holding (gm, data);
+  /* We expect closures to be allocated with ffi_closure_alloc(), in
+     which case seg will be non-NULL.  However, some users take on the
+     burden of managing this memory themselves, in which case this
+     we'll just return data. */
+  if (seg)
+    return add_segment_exec_offset (data, seg);
+  else
+    return data;
 }
 
 /* Release a chunk of memory allocated with ffi_closure_alloc.  If
@@ -933,7 +967,7 @@ ffi_closure_free (void *ptr)
     ptr = sub_segment_exec_offset (ptr, seg);
 #endif
 
-  dlfree (ptr);
+  dlfree (FFI_RESTORE_PTR (ptr));
 }
 
 # else /* ! FFI_MMAP_EXEC_WRIT */
@@ -943,34 +977,28 @@ ffi_closure_free (void *ptr)
 
 #include <stdlib.h>
 
-void
-ffi_deinit (void)
-{
-}
-
 void *
 ffi_closure_alloc (size_t size, void **code)
 {
   if (!code)
     return NULL;
 
-  return *code = mem_callbacks.malloc (size);
+  return *code = FFI_CLOSURE_PTR (malloc (size));
 }
 
 void
 ffi_closure_free (void *ptr)
 {
-  mem_callbacks.free (ptr);
+  free (FFI_RESTORE_PTR (ptr));
+}
+
+void *
+ffi_data_to_code_pointer (void *data)
+{
+  return data;
 }
 
 # endif /* ! FFI_MMAP_EXEC_WRIT */
-#else
-
-void
-ffi_deinit (void)
-{
-}
-
 #endif /* FFI_CLOSURES */
 
 #endif /* NetBSD with PROT_MPROTECT */

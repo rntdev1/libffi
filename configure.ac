@@ -2,7 +2,7 @@ dnl Process this with autoconf to create configure
 
 AC_PREREQ(2.68)
 
-AC_INIT([libffi], [3.3-rc0], [http://github.com/libffi/libffi/issues])
+AC_INIT([libffi], [3.3], [http://github.com/libffi/libffi/issues])
 AC_CONFIG_HEADERS([fficonfig.h])
 
 AC_CANONICAL_SYSTEM
@@ -262,17 +262,11 @@ fi
 if test "x$GCC" = "xyes"; then
   AC_CACHE_CHECK([whether .eh_frame section should be read-only],
       libffi_cv_ro_eh_frame, [
-  	libffi_cv_ro_eh_frame=no
+  	libffi_cv_ro_eh_frame=yes
   	echo 'extern void foo (void); void bar (void) { foo (); foo (); }' > conftest.c
   	if $CC $CFLAGS -c -fpic -fexceptions -o conftest.o conftest.c > /dev/null 2>&1; then
-	    objdump -h conftest.o > conftest.dump 2>&1
-	    libffi_eh_frame_line=`grep -n eh_frame conftest.dump | cut -d: -f 1`
-	    if test "x$libffi_eh_frame_line" != "x"; then
-	        libffi_test_line=`expr $libffi_eh_frame_line + 1`p
-	        sed -n $libffi_test_line conftest.dump > conftest.line
-	        if grep READONLY conftest.line > /dev/null; then
-	            libffi_cv_ro_eh_frame=yes
-	        fi
+	    if readelf -WS conftest.o | grep -q -n 'eh_frame .* WA'; then
+	        libffi_cv_ro_eh_frame=no
 	    fi
   	fi
   	rm -f conftest.*
@@ -292,7 +286,7 @@ if test "x$GCC" = "xyes"; then
   	echo 'int __attribute__ ((visibility ("hidden"))) foo (void) { return 1  ; }' > conftest.c
   	libffi_cv_hidden_visibility_attribute=no
   	if AC_TRY_COMMAND(${CC-cc} -Werror -S conftest.c -o conftest.s 1>&AS_MESSAGE_LOG_FD); then
-  	    if grep '\.hidden.*foo' conftest.s >/dev/null; then
+  	    if egrep '(\.hidden|\.private_extern).*foo' conftest.s >/dev/null; then
   		libffi_cv_hidden_visibility_attribute=yes
   	    fi
   	fi
