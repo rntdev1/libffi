@@ -1368,8 +1368,6 @@ static int os2munmap(void* ptr, size_t size) {
 /* Win32 MMAP via VirtualAlloc */
 static void* win32mmap(size_t size) {
   void* ptr = VirtualAlloc(0, size, MEM_RESERVE|MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-  if (ptr != 0)
-    mem_callbacks.on_allocate(ptr, size);
   return (ptr != 0)? ptr: MFAIL;
 }
 
@@ -1377,8 +1375,6 @@ static void* win32mmap(size_t size) {
 static void* win32direct_mmap(size_t size) {
   void* ptr = VirtualAlloc(0, size, MEM_RESERVE|MEM_COMMIT|MEM_TOP_DOWN,
                            PAGE_EXECUTE_READWRITE);
-  if (ptr != 0)
-    mem_callbacks.on_allocate(ptr, size);
   return (ptr != 0)? ptr: MFAIL;
 }
 
@@ -1386,20 +1382,17 @@ static void* win32direct_mmap(size_t size) {
 static int win32munmap(void* ptr, size_t size) {
   MEMORY_BASIC_INFORMATION minfo;
   char* cptr = ptr;
-  size_t remaining = size;
-  while (remaining) {
+  while (size) {
     if (VirtualQuery(cptr, &minfo, sizeof(minfo)) == 0)
       return -1;
     if (minfo.BaseAddress != cptr || minfo.AllocationBase != cptr ||
-        minfo.State != MEM_COMMIT || minfo.RegionSize > remaining)
+        minfo.State != MEM_COMMIT || minfo.RegionSize > size)
       return -1;
     if (VirtualFree(cptr, 0, MEM_RELEASE) == 0)
       return -1;
     cptr += minfo.RegionSize;
-    remaining -= minfo.RegionSize;
+    size -= minfo.RegionSize;
   }
-  if (size != 0)
-    mem_callbacks.on_deallocate(ptr, size);
   return 0;
 }
 
@@ -1451,7 +1444,6 @@ static int win32munmap(void* ptr, size_t size) {
 #include <pthread.h>
 #define MLOCK_T pthread_mutex_t
 #define INITIAL_LOCK(l)      pthread_mutex_init(l, NULL)
-#define DESTROY_LOCK(l)      pthread_mutex_destroy(l)
 #define ACQUIRE_LOCK(l)      pthread_mutex_lock(l)
 #define RELEASE_LOCK(l)      pthread_mutex_unlock(l)
 
@@ -1464,7 +1456,6 @@ static MLOCK_T magic_init_mutex = PTHREAD_MUTEX_INITIALIZER;
 #elif defined(__OS2__)
 #define MLOCK_T HMTX
 #define INITIAL_LOCK(l)      DosCreateMutexSem(0, l, 0, FALSE)
-#define DESTROY_LOCK(l)      DosCloseMutexSem(*l)
 #define ACQUIRE_LOCK(l)      DosRequestMutexSem(*l, SEM_INDEFINITE_WAIT)
 #define RELEASE_LOCK(l)      DosReleaseMutexSem(*l)
 #if HAVE_MORECORE
@@ -1497,7 +1488,6 @@ static void win32_release_lock (MLOCK_T *sl) {
 }
 
 #define INITIAL_LOCK(l)      *(l)=0
-#define DESTROY_LOCK(l)      (0)
 #define ACQUIRE_LOCK(l)      win32_acquire_lock(l)
 #define RELEASE_LOCK(l)      win32_release_lock(l)
 #if HAVE_MORECORE
@@ -1510,7 +1500,6 @@ static MLOCK_T magic_init_mutex;
 #else  /* USE_LOCKS */
 #define USE_LOCK_BIT               (0U)
 #define INITIAL_LOCK(l)
-#define DESTROY_LOCK(l)
 #endif /* USE_LOCKS */
 
 #if USE_LOCKS && HAVE_MORECORE
@@ -2382,7 +2371,7 @@ static size_t traverse_and_check(mstate m);
 
 #else /* GNUC */
 #if  USE_BUILTIN_FFS
-#define compute_bit2idx(X, I) I = ffs(X)-1
+#define compute_bit2idx(X, I) I = __builtin_ffs(X)-1
 
 #else /* USE_BUILTIN_FFS */
 #define compute_bit2idx(X, I)\

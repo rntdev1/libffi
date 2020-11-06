@@ -255,16 +255,6 @@ static const struct abi_params abi_params[FFI_LAST_ABI] = {
 
 extern void FFI_DECLARE_FASTCALL ffi_call_i386(struct call_frame *, char *) FFI_HIDDEN;
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 static void
 ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
 	      void **avalue, void *closure)
@@ -363,7 +353,7 @@ ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
 	  size_t align = FFI_SIZEOF_ARG;
 
 	  /* Issue 434: For thiscall and fastcall, if the paramter passed
-	     as 64-bit integer or struct, all following integer paramters
+	     as 64-bit integer or struct, all following integer parameters
 	     will be passed on stack.  */
 	  if ((cabi == FFI_THISCALL || cabi == FFI_FASTCALL)
 	      && (t == FFI_TYPE_SINT64
@@ -407,12 +397,14 @@ ffi_call (ffi_cif *cif, void (*fn)(void), void *rvalue, void **avalue)
   ffi_call_int (cif, fn, rvalue, avalue, NULL);
 }
 
+#ifdef FFI_GO_CLOSURES
 void
 ffi_call_go (ffi_cif *cif, void (*fn)(void), void *rvalue,
 	     void **avalue, void *closure)
 {
   ffi_call_int (cif, fn, rvalue, avalue, closure);
 }
+#endif
 
 /** private members **/
 
@@ -429,16 +421,6 @@ struct closure_frame
   void *user_data;				/* 36 */
 };
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 int FFI_HIDDEN FFI_DECLARE_FASTCALL
 ffi_closure_inner (struct closure_frame *frame, char *stack)
 {
@@ -512,7 +494,7 @@ ffi_closure_inner (struct closure_frame *frame, char *stack)
 	    align = 16;
 
 	  /* Issue 434: For thiscall and fastcall, if the paramter passed
-	     as 64-bit integer or struct, all following integer paramters
+	     as 64-bit integer or struct, all following integer parameters
 	     will be passed on stack.  */
 	  if ((cabi == FFI_THISCALL || cabi == FFI_FASTCALL)
 	      && (t == FFI_TYPE_SINT64
@@ -595,6 +577,8 @@ ffi_prep_closure_loc (ffi_closure* closure,
   return FFI_OK;
 }
 
+#ifdef FFI_GO_CLOSURES
+
 void FFI_HIDDEN ffi_go_closure_EAX(void);
 void FFI_HIDDEN ffi_go_closure_ECX(void);
 void FFI_HIDDEN ffi_go_closure_STDCALL(void);
@@ -630,6 +614,8 @@ ffi_prep_go_closure (ffi_go_closure* closure, ffi_cif* cif,
 
   return FFI_OK;
 }
+
+#endif /* FFI_GO_CLOSURES */
 
 /* ------- Native raw API support -------------------------------- */
 

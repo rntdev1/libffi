@@ -8,7 +8,9 @@
 case "${host}" in
   aarch64*-*-cygwin* | aarch64*-*-mingw* | aarch64*-*-win* )
 	TARGET=ARM_WIN64; TARGETDIR=aarch64
-	MSVC=1
+	if test "${ax_cv_c_compiler_vendor}" = "microsoft"; then
+	  MSVC=1
+	fi
 	;;
 
   aarch64*-*-*)
@@ -52,6 +54,11 @@ case "${host}" in
 	TARGET=LIBFFI_CRIS; TARGETDIR=cris
 	SOURCES="ffi.c sysv.S"
 	;;
+
+  csky-*-*)
+        TARGET=CSKY; TARGETDIR=csky
+        SOURCES="ffi.c sysv.S"
+        ;;
 
   frv-*-*)
 	TARGET=FRV; TARGETDIR=frv
@@ -134,6 +141,11 @@ case "${host}" in
 	SOURCES="ffi.c unix.S"
 	;;
 
+  kvx-*-*)
+	TARGET=KVX; TARGETDIR=kvx
+	SOURCES="ffi.c sysv.S"
+	;;
+
   m32r*-*-*)
 	TARGET=M32R; TARGETDIR=m32r
 	SOURCES="ffi.c sysv.S"
@@ -167,7 +179,7 @@ case "${host}" in
   mips-sgi-irix5.* | mips-sgi-irix6.* | mips*-*-rtems*)
 	TARGET=MIPS; TARGETDIR=mips
 	;;
-  mips*-*linux* | mips*-*-openbsd*)
+  mips*-*linux* | mips*-*-openbsd* | mips*-*-freebsd*)
 	# Support 128-bit long double for NewABI.
 	HAVE_LONG_DOUBLE='defined(__mips64)'
 	TARGET=MIPS; TARGETDIR=mips
@@ -206,7 +218,11 @@ case "${host}" in
 	TARGET=POWERPC_FREEBSD; TARGETDIR=powerpc
 	HAVE_LONG_DOUBLE_VARIANT=1
 	;;
-  powerpc64-*-freebsd*)
+  powerpcspe-*-freebsd*)
+	TARGET=POWERPC_FREEBSD; TARGETDIR=powerpc
+	CFLAGS="$CFLAGS -D__NO_FPRS__"
+	;;
+  powerpc64-*-freebsd* | powerpc64le-*-freebsd*)
 	TARGET=POWERPC; TARGETDIR=powerpc
 	;;
   powerpc*-*-rtems*)
@@ -259,7 +275,11 @@ case "${TARGET}" in
 	SOURCES="ffi.c sysv_msvc_arm32.S"
 	;;
   ARM_WIN64)
-	SOURCES="ffi.c win64_armasm.S"
+	if test "$MSVC" = 1; then
+		SOURCES="ffi.c win64_armasm.S"
+	else
+		SOURCES="ffi.c sysv.S"
+	fi
 	;;
   MIPS)
 	SOURCES="ffi.c o32.S n32.S"

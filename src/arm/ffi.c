@@ -55,6 +55,11 @@ extern unsigned int ffi_arm_trampoline[3] FFI_HIDDEN;
 #endif
 #endif
 
+#if defined(__FreeBSD__) && defined(__arm__)
+#include <sys/types.h>
+#include <machine/sysarch.h>
+#endif
+
 /* Forward declares. */
 static int vfp_type_p (const ffi_type *);
 static void layout_vfp_args (ffi_cif *);
@@ -348,16 +353,6 @@ extern void ffi_call_SYSV (void *stack, struct call_frame *,
 extern void ffi_call_VFP (void *vfp_space, struct call_frame *,
 			   void (*fn) (void), unsigned vfp_used) FFI_HIDDEN;
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 static void
 ffi_call_int (ffi_cif * cif, void (*fn) (void), void *rvalue,
 	      void **avalue, void *closure)
@@ -431,12 +426,14 @@ ffi_call (ffi_cif *cif, void (*fn) (void), void *rvalue, void **avalue)
   ffi_call_int (cif, fn, rvalue, avalue, NULL);
 }
 
+#ifdef FFI_GO_CLOSURES
 void
 ffi_call_go (ffi_cif *cif, void (*fn) (void), void *rvalue,
 	     void **avalue, void *closure)
 {
   ffi_call_int (cif, fn, rvalue, avalue, closure);
 }
+#endif
 
 static void *
 ffi_prep_incoming_args_SYSV (ffi_cif *cif, void *rvalue,
@@ -546,16 +543,6 @@ struct closure_frame
   char argp[];
 };
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 int FFI_HIDDEN
 ffi_closure_inner_SYSV (ffi_cif *cif,
 		        void (*fun) (ffi_cif *, void *, void **, void *),
@@ -569,16 +556,6 @@ ffi_closure_inner_SYSV (ffi_cif *cif,
   return cif->flags;
 }
 
-#ifndef __SANITIZE_ADDRESS__
-# ifdef __clang__
-#  if __has_feature(address_sanitizer)
-#   define __SANITIZE_ADDRESS__
-#  endif
-# endif
-#endif
-#ifdef __SANITIZE_ADDRESS__
-__attribute__((noinline,no_sanitize_address))
-#endif
 int FFI_HIDDEN
 ffi_closure_inner_VFP (ffi_cif *cif,
 		       void (*fun) (ffi_cif *, void *, void **, void *),
@@ -594,10 +571,23 @@ ffi_closure_inner_VFP (ffi_cif *cif,
 
 void ffi_closure_SYSV (void) FFI_HIDDEN;
 void ffi_closure_VFP (void) FFI_HIDDEN;
+
+#ifdef FFI_GO_CLOSURES
 void ffi_go_closure_SYSV (void) FFI_HIDDEN;
 void ffi_go_closure_VFP (void) FFI_HIDDEN;
+#endif
 
 /* the cif must already be prep'ed */
+
+#if defined(__FreeBSD__) && defined(__arm__)
+#define __clear_cache(start, end) do { \
+		struct arm_sync_icache_args ua; 		\
+								\
+		ua.addr = (uintptr_t)(start);			\
+		ua.len = (char *)(end) - (char *)start;		\
+		sysarch(ARM_SYNC_ICACHE, &ua);			\
+	} while (0);
+#endif
 
 ffi_status
 ffi_prep_closure_loc (ffi_closure * closure,
@@ -652,6 +642,7 @@ ffi_prep_closure_loc (ffi_closure * closure,
   return FFI_OK;
 }
 
+#ifdef FFI_GO_CLOSURES
 ffi_status
 ffi_prep_go_closure (ffi_go_closure *closure, ffi_cif *cif,
 		     void (*fun) (ffi_cif *, void *, void **, void *))
@@ -673,6 +664,7 @@ ffi_prep_go_closure (ffi_go_closure *closure, ffi_cif *cif,
 
   return FFI_OK;
 }
+#endif
 
 /* Below are routines for VFP hard-float support. */
 

@@ -4,8 +4,8 @@ libdir=@libdir@
 toolexeclibdir=@toolexeclibdir@
 includedir=@includedir@
 
-Name: libffi
+Name: @PACKAGE_NAME@
 Description: Library supporting Foreign Function Interfaces
 Version: @PACKAGE_VERSION@
-Libs: -L${libdir} -lffi
+Libs: -L${toolexeclibdir} -lffi
 Cflags: -I${includedir}
