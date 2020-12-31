@@ -83,6 +83,8 @@ endforeach
 ffi_conf.set('TARGET', TARGET)
 ffi_conf.set('VERSION', meson.project_version())
 
+ffi_conf.set10('STATIC', get_option('default_library') == 'static')
+
 if cc.get_id() == 'msvc'
   # GCC and Clang accept assembly files directly, but MSVC's cl.exe does not.
   # You need to manually pass the files through the pre-processor first and
