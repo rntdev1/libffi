@@ -18,7 +18,7 @@ args = sys.argv[1:]
 args += ['-Werror', '-S', infile, '-o', outfile]
 res = subprocess.run(args, stdout=subprocess.PIPE, universal_newlines=True, check=True)
 
-regex = re.compile('\.hidden.*foo')
+regex = re.compile('\.(hidden|private_extern).*foo')
 with open(outfile, 'r') as f:
     if regex.search(f.read()):
         sys.exit(0)
