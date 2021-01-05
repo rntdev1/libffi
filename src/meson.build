@@ -136,8 +136,7 @@ if cc.get_id() == 'msvc'
         input : asm_source,
         output : preproc_name,
         command : [cl, '/nologo', '/EP', '/P', '/Fi@OUTPUT@',
-                   '/DTARGET=' + TARGET, '/DFFI_BUILDING',
-                   '@INPUT@'] + incflags)
+                   '/DFFI_BUILDING', '@INPUT@'] + incflags)
     ffi_asm_objs += custom_target(obj_name,
         input : preproc,
         output : obj_name,
@@ -147,7 +146,6 @@ if cc.get_id() == 'msvc'
 endif
 
 ffi_lib = library('ffi', ffi_c_sources, ffi_asm_sources,
-  c_args : '-DTARGET=' + TARGET,
   include_directories : ffiinc,
   # Taken from the libtool-version file
   # current - age . age . revision
