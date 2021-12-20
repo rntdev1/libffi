@@ -94,7 +94,7 @@
 
 /* Aid in defining a jump table with 8 bytes between entries.  */
 /* ??? The clang assembler doesn't handle .if with symbolic expressions.  */
-#ifdef __clang__
+#if defined(__clang__) || !defined(HAVE_AS_MODERN_PSEUDO_OPS)
 # define E(index)
 #else
 # define E(index)				\
@@ -104,10 +104,12 @@
 #endif
 
 	.text
+#ifdef HAVE_AS_MODERN_PSEUDO_OPS
 	.syntax unified
+#endif
 	.arm
 
-#ifndef __clang__
+#if !defined(__clang__) && defined(HAVE_AS_MODERN_PSEUDO_OPS)
 	/* We require interworking on LDM, which implies ARMv5T,
 	   which implies the existance of BLX.  */
  	.arch	armv5t
@@ -127,6 +129,7 @@ ARM_FUNC_START(ffi_call_VFP)
 	UNWIND(.fnstart)
 	cfi_startproc
 
+#ifdef HAVE_ARM_VFP
 	cmp	r3, #3			@ load only d0 if possible
 #ifdef __clang__
 	vldrle d0, [r0]
@@ -136,11 +139,14 @@ ARM_FUNC_START(ffi_call_VFP)
 	ldcgt	p11, cr0, [r0], {16}	@ vldmgt r0, {d0-d7}
 #endif
 	add	r0, r0, #64		@ discard the vfp register args
+#else
+	bkpt #16
+#endif
 	/* FALLTHRU */
 ARM_FUNC_END(ffi_call_VFP)
 
 ARM_FUNC_START(ffi_call_SYSV)
-	stm	r1, {fp, lr}
+	stmia	r1, {fp, lr}
 	mov	fp, r1
 
 	@ This is a bit of a lie wrt the origin of the unwind info, but
@@ -171,6 +177,7 @@ ARM_FUNC_START(ffi_call_SYSV)
 	add	pc, pc, r3, lsl #3
 	nop
 0:
+#ifdef HAVE_ARM_VFP
 E(ARM_TYPE_VFP_S)
 #ifdef __clang__
 	vstr s0, [r2]
@@ -192,17 +199,28 @@ E(ARM_TYPE_VFP_N)
 	stc	p11, cr0, [r2], {8}	@ vstm r2, {d0-d3}
 #endif
 	pop	{fp,pc}
+#else
+E(ARM_TYPE_VFP_S)
+	bkpt #16
+	nop
+E(ARM_TYPE_VFP_D)
+	bkpt #16
+	nop
+E(ARM_TYPE_VFP_N)
+	bkpt #16
+	nop
+#endif
 E(ARM_TYPE_INT64)
 	str	r1, [r2, #4]
 	nop
 E(ARM_TYPE_INT)
 	str	r0, [r2]
-	pop	{fp,pc}
+	ldmia	sp!, {fp,pc}
 E(ARM_TYPE_VOID)
-	pop	{fp,pc}
+	ldmia	sp!, {fp,pc}
 	nop
 E(ARM_TYPE_STRUCT)
-	pop	{fp,pc}
+	ldmia	sp!, {fp,pc}
 
 	cfi_endproc
 	UNWIND(.fnend)
@@ -274,6 +292,7 @@ ARM_FUNC_END(ffi_go_closure_VFP)
 ARM_FUNC_START(ffi_closure_VFP)
 	UNWIND(.fnstart)
 	cfi_startproc
+#ifdef HAVE_ARM_VFP
 	stmdb	sp!, {r0-r3}			@ save argument regs
 	cfi_adjust_cfa_offset(16)
 
@@ -306,6 +325,9 @@ ARM_FUNC_START(ffi_closure_VFP)
 	add	r2, sp, #8+64			@ load result
 	adr	r3, CNAME(ffi_closure_ret)
 	add	pc, r3, r0, lsl #3
+#else
+	bkpt #16
+#endif
 	cfi_endproc
 	UNWIND(.fnend)
 ARM_FUNC_END(ffi_closure_VFP)
@@ -319,6 +341,7 @@ ARM_FUNC_START_LOCAL(ffi_closure_ret)
 	cfi_rel_offset(sp, 0)
 	cfi_rel_offset(lr, 4)
 0:
+#ifdef HAVE_ARM_VFP
 E(ARM_TYPE_VFP_S)
 #ifdef __clang__
 	vldr s0, [r2]
@@ -340,17 +363,28 @@ E(ARM_TYPE_VFP_N)
 	ldc	p11, cr0, [r2], {8}		@ vldm r2, {d0-d3}
 #endif
 	ldm	sp, {sp,pc}
+#else
+E(ARM_TYPE_VFP_S)
+	bkpt #16
+	nop
+E(ARM_TYPE_VFP_D)
+	bkpt #16
+	nop
+E(ARM_TYPE_VFP_N)
+	bkpt #16
+	nop
+#endif
 E(ARM_TYPE_INT64)
 	ldr	r1, [r2, #4]
 	nop
 E(ARM_TYPE_INT)
 	ldr	r0, [r2]
-	ldm	sp, {sp,pc}
+	ldmia	sp, {sp,pc}
 E(ARM_TYPE_VOID)
-	ldm	sp, {sp,pc}
+	ldmia	sp, {sp,pc}
 	nop
 E(ARM_TYPE_STRUCT)
-	ldm	sp, {sp,pc}
+	ldmia	sp, {sp,pc}
 	cfi_endproc
 ARM_FUNC_END(ffi_closure_ret)
 
