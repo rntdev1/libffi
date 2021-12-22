@@ -163,3 +163,5 @@ pkgconf.generate(ffi_lib,
 
 ffi_dep = declare_dependency(link_with : ffi_lib,
   include_directories : ffiinc)
+
+meson.override_dependency('libffi', ffi_dep)
