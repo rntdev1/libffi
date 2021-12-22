@@ -1,5 +1,5 @@
 project('libffi', 'c', version : '3.3',
-        meson_version : '>= 0.48.0',
+        meson_version : '>= 0.54.0',
         default_options : ['buildtype=debugoptimized',
                            'warning_level=1'])
 
