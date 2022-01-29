@@ -6,12 +6,8 @@ project('libffi', 'c', version : '3.3',
 cc = meson.get_compiler('c')
 
 # Suppress all compiler warnings when we're a subproject
-if meson.is_subproject()
-  if cc.get_argument_syntax() == 'msvc'
-    add_project_arguments('/w', language : 'c')
-  else
-    add_project_arguments('-w', language : 'c')
-  endif
+if meson.is_subproject() and cc.get_argument_syntax() != 'msvc'
+  add_project_arguments('-w', language : 'c')
 endif
 
 # For FFI_EXTERN symbol exporting
