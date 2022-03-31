@@ -155,7 +155,7 @@ if ['arm', 'aarch64'].contains(host_cpu_family) and host_system == 'darwin'
   ffi_conf.set('FFI_EXEC_TRAMPOLINE_TABLE', 1)
 else
   ffi_conf.set('FFI_EXEC_TRAMPOLINE_TABLE', 0)
-  if ['android', 'darwin', 'openbsd', 'freebsd', 'solaris'].contains(host_system)
+  if ['android', 'darwin', 'openbsd', 'freebsd', 'qnx', 'solaris'].contains(host_system)
     message('Cannot use malloc on this target, using fallback')
     ffi_conf.set('FFI_MMAP_EXEC_WRIT', 1)
   endif
