@@ -64,7 +64,7 @@ elif host_cpu_family == 'arm'
   TARGET = 'ARM'
   c_sources = ['ffi.c']
   asm_sources = ['sysv.S']
-elif host_cpu_family == 'mips'
+elif ['mips', 'mips64'].contains(host_cpu_family)
   arch_subdir = 'mips'
   TARGET = 'MIPS'
   c_sources = ['ffi.c']
@@ -74,6 +74,12 @@ elif host_cpu_family == 's390x'
   TARGET = 'S390'
   c_sources = ['ffi.c']
   asm_sources = ['sysv.S']
+endif
+
+if host_cpu_family == 'mips64'
+  arch_name = 'mips'
+else
+  arch_name = host_cpu_family
 endif
 
 if TARGET == ''
