@@ -233,6 +233,11 @@ ffi_trampoline_table_alloc (void)
   kern_return_t kt;
   uint16_t i;
 
+  /*
+   * The following code is based on Apple's code from:
+   * https://github.com/libffi/libffi/pull/621
+   */
+
   if (!ffi_trampoline_initialized)
     {
       ffi_trampolines_dylib = dlopen ("/usr/lib/libffi-trampolines.dylib",
