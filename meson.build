@@ -23,6 +23,10 @@ cc = meson.get_compiler('c')
 is_msvc_like = cc.get_argument_syntax() == 'msvc'
 is_gnu_like = cc.get_argument_syntax() == 'gcc'
 
+if meson.is_subproject() and not is_msvc_like
+  add_project_arguments('-w', language : 'c')
+endif
+
 if is_gnu_like
   add_project_arguments('-fexceptions', language: 'c')
 endif
