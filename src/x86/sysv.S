@@ -887,28 +887,12 @@ ENDF(C(ffi_closure_raw_THISCALL))
 
 #endif /* !FFI_NO_RAW_API */
 
-#ifdef X86_DARWIN
-# define COMDAT(X)							\
-        .section __TEXT,__text,coalesced,pure_instructions;		\
-        .weak_definition X;						\
-        FFI_HIDDEN(X)
-#elif defined __ELF__ && !(defined(__sun__) && defined(__svr4__))
-# define COMDAT(X)							\
-	.section .text.X,"axG",@progbits,X,comdat;			\
-	.globl	X;							\
-	FFI_HIDDEN(X)
-#else
-# define COMDAT(X)
-#endif
-
 #if defined(__PIC__)
-	COMDAT(C(__x86.get_pc_thunk.bx))
 C(__x86.get_pc_thunk.bx):
 	movl	(%esp), %ebx
 	ret
 ENDF(C(__x86.get_pc_thunk.bx))
 # if defined X86_DARWIN || defined HAVE_HIDDEN_VISIBILITY_ATTRIBUTE
-	COMDAT(C(__x86.get_pc_thunk.dx))
 C(__x86.get_pc_thunk.dx):
 	movl	(%esp), %edx
 	ret
