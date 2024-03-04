@@ -1,6 +1,7 @@
 project('libffi', 'c', version : '3.4.4',
         meson_version : '>= 0.64.0',
-        default_options : ['buildtype=debugoptimized',
+        default_options : ['c_std=gnu99',
+                           'buildtype=debugoptimized',
                            'warning_level=1'])
 
 fs = import('fs')
